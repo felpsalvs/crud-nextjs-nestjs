@@ -14,7 +14,7 @@ export class GeminiService implements AIService {
     private readonly cacheService: CacheService,
   ) {
     const genAI = new GoogleGenerativeAI(
-      this.configService.get<string>('GEMINI_API_KEY') || '',
+      this.configService.get<string>('NEXT_PUBLIC_GEMINI_API_KEY') || '',
     );
     this.model = genAI.getGenerativeModel({ model: 'gemini-pro' });
   }

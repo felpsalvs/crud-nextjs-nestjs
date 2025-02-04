@@ -7,7 +7,7 @@ import useSWR, { mutate } from 'swr';
 import { debounce } from 'lodash';
 import axios from 'axios';
 import { handleSWRError } from '@/lib/swr-config';
-import { GEMINI_API_KEY } from '@/config/env';
+import { NEXT_PUBLIC_GEMINI_API_KEY } from '@/config/env';
 
 interface Product {
   id: string;
@@ -85,7 +85,7 @@ export const ProductsProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const response = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${NEXT_PUBLIC_GEMINI_API_KEY}`,
         requestBody,
         { headers: { 'Content-Type': 'application/json' } }
       );

@@ -5,7 +5,7 @@ import { api } from '@/services/api';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { UNSPLASH_CLIENT_ID, YOUTUBE_API_KEY } from '@/config/env';
+import { NEXT_PUBLIC_UNSPLASH_CLIENT_ID, NEXT_PUBLIC_YOUTUBE_API_KEY } from '@/config/env';
 
 interface ProductPageProps {
   params: {
@@ -49,7 +49,7 @@ const ProductPage = ({ params }: ProductPageProps) => {
         const imageResponse = await axios.get(`https://api.unsplash.com/search/photos`, {
           params: {
             query: productName,
-            client_id: UNSPLASH_CLIENT_ID,
+            client_id: NEXT_PUBLIC_UNSPLASH_CLIENT_ID,
             per_page: 1
           }
         });
@@ -61,7 +61,7 @@ const ProductPage = ({ params }: ProductPageProps) => {
             q: productName,
             type: 'video',
             maxResults: VIDEO_MAX_RESULTS,
-            key: YOUTUBE_API_KEY
+            key: NEXT_PUBLIC_YOUTUBE_API_KEY
           }
         });
 
