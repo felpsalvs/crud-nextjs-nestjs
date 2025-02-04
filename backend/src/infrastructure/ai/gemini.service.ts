@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { AIService } from '../../domain/services/ai.service';
@@ -6,20 +6,34 @@ import { AIResponseData } from '../../domain/interfaces/ai-response.interface';
 import { CacheService } from '../cache/cache.service';
 
 @Injectable()
-export class GeminiService implements AIService {
+export class GeminiService implements AIService, OnModuleInit {
   private model: GenerativeModel;
+  private readonly logger = new Logger(GeminiService.name);
+  private readonly maxRetries = 3;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly cacheService: CacheService,
-  ) {
-    const genAI = new GoogleGenerativeAI(
-      this.configService.get<string>('NEXT_PUBLIC_GEMINI_API_KEY') || '',
-    );
-    this.model = genAI.getGenerativeModel({ model: 'gemini-flash' });
+  ) {}
+
+  async onModuleInit() {
+    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    if (!apiKey) {
+      this.logger.error('GEMINI_API_KEY not configured');
+      throw new Error('GEMINI_API_KEY is required');
+    }
+
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      this.model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    } catch (error) {
+      this.logger.error('Failed to initialize Gemini API', error);
+      throw error;
+    }
   }
 
   private getFallbackResponse(productName: string): AIResponseData {
+    this.logger.warn(`Using fallback response for: ${productName}`);
     return {
       description: `Default description for ${productName}`,
       suggestedPrice: 99.99,
@@ -35,15 +49,41 @@ export class GeminiService implements AIService {
   async enrichProductInfo(productName: string): Promise<AIResponseData> {
     const cacheKey = this.cacheService.generateKey(productName);
 
-    // Tenta buscar do cache primeiro
-    const cachedResponse = await this.cacheService.getAIResponse(cacheKey);
-    if (cachedResponse) {
-      console.log('Cache hit for product:', productName);
-      return cachedResponse;
-    }
-
     try {
-      const prompt = `You are a product description generator. Create a JSON object for "${productName}" following exactly this structure, without any additional text or formatting:
+      const cachedResponse = await this.cacheService.getAIResponse(cacheKey);
+      if (cachedResponse) {
+        this.logger.debug(`Cache hit for product: ${productName}`);
+        return cachedResponse;
+      }
+
+      for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+        try {
+          const response = await this.generateContent(productName);
+          const parsedResponse = await this.parseAndValidateResponse(response);
+          
+          if (parsedResponse) {
+            await this.cacheService.setAIResponse(cacheKey, parsedResponse);
+            return parsedResponse;
+          }
+        } catch (error) {
+          this.logger.error(
+            `Attempt ${attempt} failed for product: ${productName}`,
+            error
+          );
+          if (attempt === this.maxRetries) throw error;
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+
+      return this.getFallbackResponse(productName);
+    } catch (error) {
+      this.logger.error('Failed to enrich product info', error);
+      return this.getFallbackResponse(productName);
+    }
+  }
+
+  private async generateContent(productName: string): Promise<string> {
+    const prompt = `You are a product description generator. Create a JSON object for "${productName}" following exactly this structure, without any additional text or formatting:
 {
   "description": "Write a concise and professional product description",
   "suggestedPrice": <number between 50 and 500>,
@@ -55,54 +95,40 @@ export class GeminiService implements AIService {
   }
 }`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = result.response.text();
+    const result = await this.model.generateContent(prompt);
+    return result.response.text();
+  }
 
-      try {
-        // Remove qualquer texto antes ou depois do JSON
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        const jsonString = jsonMatch ? jsonMatch[0] : '';
+  private async parseAndValidateResponse(response: string): Promise<AIResponseData | null> {
+    try {
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const jsonString = jsonMatch ? jsonMatch[0] : '';
 
-        if (!jsonString) {
-          console.error('No valid JSON found in response');
-          return this.getFallbackResponse(productName);
-        }
-
-        const parsed = JSON.parse(jsonString) as AIResponseData;
-
-        if (!this.isValidAIResponse(parsed)) {
-          console.error('Invalid AI response structure');
-          return this.getFallbackResponse(productName);
-        }
-
-        // Salva no cache antes de retornar
-        await this.cacheService.setAIResponse(cacheKey, {
-          description: parsed.description.trim(),
-          suggestedPrice: Number(parsed.suggestedPrice),
-          additionalInfo: {
-            features: parsed.additionalInfo.features.map((f) => f.trim()),
-            benefits: parsed.additionalInfo.benefits.map((b) => b.trim()),
-            targetAudience: parsed.additionalInfo.targetAudience.trim(),
-            other: parsed.additionalInfo.other || {},
-          },
-        });
-        return {
-          description: parsed.description.trim(),
-          suggestedPrice: Number(parsed.suggestedPrice),
-          additionalInfo: {
-            features: parsed.additionalInfo.features.map((f) => f.trim()),
-            benefits: parsed.additionalInfo.benefits.map((b) => b.trim()),
-            targetAudience: parsed.additionalInfo.targetAudience.trim(),
-            other: parsed.additionalInfo.other || {},
-          },
-        };
-      } catch (parseError) {
-        console.error('Error parsing Gemini response:', parseError);
-        return this.getFallbackResponse(productName);
+      if (!jsonString) {
+        this.logger.warn('No valid JSON found in response');
+        return null;
       }
+
+      const parsed = JSON.parse(jsonString) as AIResponseData;
+
+      if (!this.isValidAIResponse(parsed)) {
+        this.logger.warn('Invalid AI response structure');
+        return null;
+      }
+
+      return {
+        description: parsed.description.trim(),
+        suggestedPrice: Number(parsed.suggestedPrice),
+        additionalInfo: {
+          features: parsed.additionalInfo.features.map((f) => f.trim()),
+          benefits: parsed.additionalInfo.benefits.map((b) => b.trim()),
+          targetAudience: parsed.additionalInfo.targetAudience.trim(),
+          other: parsed.additionalInfo.other || {},
+        },
+      };
     } catch (error) {
-      console.error('Error calling Gemini API:', error);
-      return this.getFallbackResponse(productName);
+      this.logger.error('Error parsing response', error);
+      return null;
     }
   }
 
