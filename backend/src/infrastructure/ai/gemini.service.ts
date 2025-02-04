@@ -14,7 +14,7 @@ export class GeminiService implements AIService, OnModuleInit {
   constructor(
     private readonly configService: ConfigService,
     private readonly cacheService: CacheService,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
@@ -60,7 +60,7 @@ export class GeminiService implements AIService, OnModuleInit {
         try {
           const response = await this.generateContent(productName);
           const parsedResponse = await this.parseAndValidateResponse(response);
-          
+
           if (parsedResponse) {
             await this.cacheService.setAIResponse(cacheKey, parsedResponse);
             return parsedResponse;

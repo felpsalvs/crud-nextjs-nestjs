@@ -1,6 +1,4 @@
-
-
-import { 
+import {
   ClerkProvider,
 } from "@clerk/nextjs";
 import { Inter } from "next/font/google";
@@ -9,7 +7,6 @@ import { SWRConfig } from 'swr';
 import { swrConfig } from '@/lib/swr-config';
 import { Toaster } from "@/components/ui/toaster";
 import { ProductsProvider } from "@/domains/products/components/context/ProductsContext";
-import { NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY } from "@/config/env";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,7 +18,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider
-      publishableKey={NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
       afterSignInUrl="/"
       afterSignUpUrl="/"
     >
