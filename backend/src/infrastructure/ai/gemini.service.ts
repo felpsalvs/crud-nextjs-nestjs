@@ -16,7 +16,7 @@ export class GeminiService implements AIService {
     const genAI = new GoogleGenerativeAI(
       this.configService.get<string>('NEXT_PUBLIC_GEMINI_API_KEY') || '',
     );
-    this.model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    this.model = genAI.getGenerativeModel({ model: 'gemini-flash' });
   }
 
   private getFallbackResponse(productName: string): AIResponseData {
